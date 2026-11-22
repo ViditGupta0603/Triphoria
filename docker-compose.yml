@@ -1,0 +1,82 @@
+# Full stack: Temporal (dev server + Web UI), Redis, API, Worker.
+#
+#   docker compose up --build
+#
+#   API          http://localhost:3000   (host port: API_PORT)
+#   Temporal UI  http://localhost:8233   (host port: TEMPORAL_UI_PORT)
+#   Redis        localhost:6379          (host port: REDIS_PORT)
+#
+# If a host port is already in use, override it, e.g. API_PORT=3001 in a .env file.
+
+name: triphoria
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  REDIS_URL: redis://redis:6379
+  TEMPORAL_ADDRESS: temporal:7233
+  TEMPORAL_NAMESPACE: default
+  TEMPORAL_TASK_QUEUE: hotel-offers
+  # The mock suppliers are served by the API container.
+  SUPPLIER_BASE_URL: http://api:3000
+  SUPPLIER_TIMEOUT_MS: ${SUPPLIER_TIMEOUT_MS:-3000}
+  CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-300}
+  DEGRADED_TTL_SECONDS: ${DEGRADED_TTL_SECONDS:-30}
+  WORKFLOW_TIMEOUT_MS: ${WORKFLOW_TIMEOUT_MS:-15000}
+
+services:
+  temporal:
+    # Official Temporal CLI image; `server start-dev` runs a single-binary
+    # Temporal server with the Web UI and the "default" namespace.
+    image: temporalio/temporal:${TEMPORAL_CLI_VERSION:-latest}
+    command: ["server", "start-dev", "--ip", "0.0.0.0", "--ui-port", "8233", "--log-level", "warn"]
+    ports:
+      - "${TEMPORAL_PORT:-7233}:7233"      # gRPC frontend
+      - "${TEMPORAL_UI_PORT:-8233}:8233"   # Web UI
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build: .
+    environment:
+      <<: *app-env
+      SERVICE_NAME: api
+      PORT: 3000
+      SUPPLIER_A_DOWN: ${SUPPLIER_A_DOWN:-false}
+      SUPPLIER_B_DOWN: ${SUPPLIER_B_DOWN:-false}
+    ports:
+      - "${API_PORT:-3000}:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started   # the API retries its Temporal connection itself
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *app-env
+      SERVICE_NAME: worker
+    healthcheck:
+      disable: true   # no HTTP server in the worker
+    depends_on:
+      redis:
+        condition: service_healthy
+      temporal:
+        condition: service_started   # the worker retries its Temporal connection itself
+      api:
+        condition: service_healthy   # mock suppliers live in the API
+    restart: unless-stopped
