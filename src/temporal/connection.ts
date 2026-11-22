@@ -2,10 +2,7 @@ import { logger } from '../logger';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Retries `connect` with capped exponential backoff. Used at startup because
- * the Temporal container can be "running" before its frontend accepts calls.
- */
+// Temporal can take a few seconds to accept connections after the container starts
 export async function connectWithRetry<T>(
   what: string,
   connect: () => Promise<T>,

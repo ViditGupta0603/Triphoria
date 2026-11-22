@@ -6,7 +6,7 @@ import { logger } from '../logger';
 import { supplierLabel, type SupplierHotel, type SupplierId } from '../types';
 import { SUPPLIER_DATA } from './data';
 
-/** In-memory outage switch per mock supplier (used to simulate downtime). */
+// toggled via POST /supplierX/status to simulate an outage
 const supplierUp: Record<SupplierId, boolean> = {
   A: !config.SUPPLIER_A_DOWN,
   B: !config.SUPPLIER_B_DOWN,
@@ -27,7 +27,6 @@ export const getSupplierHotels = (id: SupplierId, city?: string): SupplierHotel[
 
 const statusBody = z.object({ up: z.boolean() });
 
-/** Router mounted at /supplierA or /supplierB. */
 export const createSupplierRouter = (id: SupplierId): Router => {
   const router = Router();
   const label = supplierLabel(id);

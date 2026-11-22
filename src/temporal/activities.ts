@@ -28,10 +28,7 @@ export interface ActivityDeps {
 
 type Level = 'info' | 'warn' | 'error';
 
-/**
- * Temporal's activity logger (adds workflow/activity ids) when running inside
- * a worker; falls back to the app logger when called outside an activity.
- */
+// Temporal's logger inside a worker, plain pino otherwise (tests, scripts)
 const emit = (level: Level, message: string, meta?: Record<string, unknown>): void => {
   try {
     Context.current();
@@ -68,7 +65,6 @@ export const createActivities = (deps: ActivityDeps) => {
   const doFetch = deps.fetchImpl ?? fetch;
 
   return {
-    /** Fetches one supplier's hotels for a city and maps them to offers. */
     async fetchSupplierHotels(supplier: SupplierId, city: string): Promise<HotelOffer[]> {
       const label = supplierLabel(supplier);
       const url = new URL(`/supplier${supplier}/hotels`, deps.supplierBaseUrl);
@@ -113,7 +109,7 @@ export const createActivities = (deps: ActivityDeps) => {
 
       const wanted = normaliseCity(city);
       const offers: HotelOffer[] = parsed.data
-        .filter((h) => normaliseCity(h.city) === wanted) // defend against suppliers ignoring the filter
+        .filter((h) => normaliseCity(h.city) === wanted) // in case a supplier ignores the city param
         .map((h) => ({ name: h.name, price: h.price, supplier: label, commissionPct: h.commissionPct }));
 
       log.info('Supplier call succeeded', {
@@ -125,7 +121,6 @@ export const createActivities = (deps: ActivityDeps) => {
       return offers;
     },
 
-    /** Stores the de-duplicated list for a city in Redis. */
     async cacheHotels(city: string, hotels: HotelOffer[], degradedSuppliers: SupplierId[]): Promise<void> {
       const ttlSeconds = degradedSuppliers.length > 0 ? deps.degradedTtlSeconds : deps.cacheTtlSeconds;
       try {

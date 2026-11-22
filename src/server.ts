@@ -29,7 +29,7 @@ const server = app.listen(config.PORT, () => {
   logger.info({ port: config.PORT }, 'API listening');
 });
 
-// Connect to Temporal in the background so the first request doesn't pay for it.
+// connect early so the first request doesn't wait for it
 getTemporalClient().catch((err: unknown) =>
   logger.error({ err: err instanceof Error ? err.message : String(err) }, 'Could not connect to Temporal'),
 );

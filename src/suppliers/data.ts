@@ -1,14 +1,7 @@
 import type { SupplierHotel, SupplierId } from '../types';
 
-/**
- * Static mock inventory.
- *
- * delhi  – overlaps where A wins (Radison), B wins (Holtin), an equal-price tie
- *          broken by commission (Taj Palace), plus single-supplier hotels.
- * mumbai – second city with partial overlap.
- * goa    – only Supplier A has inventory.
- * any other city – no results.
- */
+// delhi: A wins Radison, B wins Holtin, Taj Palace is a price tie (B has higher commission)
+// mumbai: partial overlap, goa: Supplier A only
 export const SUPPLIER_DATA: Record<SupplierId, SupplierHotel[]> = {
   A: [
     { hotelId: 'a1', name: 'Holtin', price: 6000, city: 'delhi', commissionPct: 10 },

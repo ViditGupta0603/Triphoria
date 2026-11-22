@@ -1,7 +1,3 @@
-/**
- * Temporal workflow definitions. Runs inside the deterministic workflow
- * sandbox: only import pure modules and activity *types* here.
- */
 import { ApplicationFailure, log, proxyActivities } from '@temporalio/workflow';
 import type { HotelOffersWorkflowInput, HotelOffersWorkflowResult } from '../types';
 import type { Activities } from './activities';
@@ -11,10 +7,6 @@ import { collectBestOffers } from './orchestrate';
 const { fetchSupplierHotels } = proxyActivities<Activities>(SUPPLIER_ACTIVITY_OPTIONS);
 const { cacheHotels } = proxyActivities<Activities>(CACHE_ACTIVITY_OPTIONS);
 
-/**
- * Calls every supplier in parallel, de-duplicates hotels by name, keeps the
- * best-priced offer per hotel, stores the result in Redis and returns it.
- */
 export async function hotelOffersWorkflow(
   input: HotelOffersWorkflowInput,
 ): Promise<HotelOffersWorkflowResult> {

@@ -32,14 +32,12 @@ const probe = async (check: () => Promise<void>, timeoutMs: number): Promise<Com
   }
 };
 
-/** Supplier probe that calls the supplier's real hotels endpoint over HTTP. */
 export const httpSupplierCheck =
   (baseUrl: string, fetchImpl: typeof fetch = fetch) =>
   async (id: SupplierId): Promise<void> => {
     const res = await fetchImpl(new URL(`/supplier${id}/hotels`, baseUrl), {
       headers: { accept: 'application/json' },
     });
-    // Drain the body so the connection can be reused.
     await res.arrayBuffer().catch(() => undefined);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
   };

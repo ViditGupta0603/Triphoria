@@ -16,7 +16,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:unit": "vitest run test/unit",
-    "harness": "tsx test/e2e/local-harness.ts",
     "test:postman": "npx -y newman@6 run postman/Triphoria.postman_collection.json"
   },
   "dependencies": {

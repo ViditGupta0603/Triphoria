@@ -50,7 +50,6 @@ const withTimeout = <T>(promise: Promise<T>, ms: number, message: string): Promi
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 };
 
-/** Maps workflow / Temporal errors to HTTP errors. */
 export const toHttpError = (err: unknown): HttpError => {
   if (err instanceof HttpError) return err;
 
@@ -107,7 +106,7 @@ export const createHotelsRouter = ({ runner, store, workflowTimeoutMs }: HotelsR
     const requestId = res.locals.requestId as string;
     const log = res.locals.log as Logger;
 
-    // Unfiltered: always run the workflow (fresh data, refreshes the cache).
+    // no price filter: always fetch fresh
     if (minPrice === undefined && maxPrice === undefined) {
       const result = await runWorkflow(city, requestId, log);
       if (result.degradedSuppliers.length > 0) {
@@ -117,7 +116,7 @@ export const createHotelsRouter = ({ runner, store, workflowTimeoutMs }: HotelsR
       return;
     }
 
-    // Filtered: price range query runs inside Redis; fill the cache first on a miss.
+    // price filter: query Redis, run the workflow first if the city isn't cached
     const range: PriceRange = { minPrice, maxPrice };
     let cacheStatus: 'HIT' | 'MISS' = 'HIT';
     let cached = await filterInRedis(city, range);

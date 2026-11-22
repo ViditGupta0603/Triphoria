@@ -4,7 +4,6 @@ import { logger } from '../logger';
 
 const ID_PATTERN = /^[\w.-]{1,128}$/;
 
-/** Assigns a request id (or reuses a safe incoming X-Request-Id) and logs each request. */
 export const requestContext: RequestHandler = (req, res, next) => {
   const incoming = req.header('x-request-id');
   const requestId = incoming && ID_PATTERN.test(incoming) ? incoming : randomUUID();

@@ -6,7 +6,7 @@ import { createHotelStore } from './redis/hotelStore';
 import { createActivities } from './temporal/activities';
 import { connectWithRetry } from './temporal/connection';
 
-// Send Temporal SDK, workflow and activity logs through pino as JSON.
+// route Temporal SDK logs through pino
 const toPino: Record<LogLevel, 'trace' | 'debug' | 'info' | 'warn' | 'error'> = {
   TRACE: 'trace',
   DEBUG: 'debug',
@@ -49,7 +49,6 @@ async function main(): Promise<void> {
   );
 
   try {
-    // Resolves after SIGINT/SIGTERM triggers a graceful shutdown.
     await worker.run();
   } finally {
     await connection.close();

@@ -12,21 +12,18 @@ export class HttpError extends Error {
   }
 }
 
-/** 400 — bad client input. */
 export class ValidationError extends HttpError {
   constructor(message: string, details?: unknown) {
     super(400, message, details);
   }
 }
 
-/** 502 — upstream suppliers failed. */
 export class UpstreamError extends HttpError {
   constructor(message: string, details?: unknown) {
     super(502, message, details);
   }
 }
 
-/** 503 — one of our own dependencies (Redis, Temporal) is unavailable. */
 export class DependencyError extends HttpError {
   constructor(message: string, details?: unknown) {
     super(503, message, details);
@@ -40,7 +37,6 @@ export const notFound: RequestHandler = (req, _res, next) => {
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   const log = (res.locals.log as typeof logger | undefined) ?? logger;
 
-  // Malformed JSON body from express.json()
   if (err?.type === 'entity.parse.failed') {
     res.status(400).json({ error: 'Malformed JSON body' });
     return;

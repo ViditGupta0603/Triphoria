@@ -1,9 +1,4 @@
-/**
- * Orchestration core used by the Temporal workflow.
- *
- * Kept free of Temporal imports and I/O so it can run inside the workflow
- * sandbox and be unit-tested with plain stubs.
- */
+// Workflow logic. No Temporal imports here so it can be tested with plain stubs.
 import { mergeBestOffers, normaliseCity } from '../domain/merge';
 import {
   SUPPLIER_IDS,
@@ -21,7 +16,6 @@ export interface OrchestratorLog {
 export interface OrchestratorDeps {
   fetchSupplierHotels(supplier: SupplierId, city: string): Promise<HotelOffer[]>;
   cacheHotels(city: string, hotels: HotelOffer[], degradedSuppliers: SupplierId[]): Promise<void>;
-  /** Builds the error thrown when every supplier failed. */
   allSuppliersFailed(message: string, failures: SupplierFailure[]): Error;
   log: OrchestratorLog;
 }
@@ -33,7 +27,7 @@ export interface SupplierFailure {
 
 const describeError = (reason: unknown): string => {
   if (reason instanceof Error) {
-    // Temporal wraps activity errors: ActivityFailure.cause holds the real one.
+    // ActivityFailure wraps the real error in .cause
     const cause = (reason as Error & { cause?: unknown }).cause;
     return cause instanceof Error ? cause.message : reason.message;
   }
@@ -47,7 +41,7 @@ export async function collectBestOffers(
   const city = normaliseCity(rawCity);
   deps.log.info('Fetching offers from suppliers', { city, suppliers: SUPPLIER_IDS });
 
-  // Fan out to every supplier in parallel; one failure must not cancel the others.
+  // allSettled so one failing supplier doesn't cancel the other
   const settled = await Promise.allSettled(
     SUPPLIER_IDS.map((supplier) => deps.fetchSupplierHotels(supplier, city)),
   );

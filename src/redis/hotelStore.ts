@@ -2,12 +2,10 @@ import type { Redis } from 'ioredis';
 import { hotelKey, normaliseCity } from '../domain/merge';
 import type { HotelOffer, SupplierId } from '../types';
 
-/**
- * Redis layout per city (all keys share one TTL):
- *   hotels:{city}         ZSET  member = normalised hotel name, score = price
- *   hotels:{city}:offers  HASH  normalised hotel name -> JSON(HotelOffer)
- *   hotels:{city}:meta    HASH  fetchedAt, count, degraded — marks the city as cached (even if empty)
- */
+// Per city, same TTL on all three keys:
+//   hotels:{city}         zset  name -> price
+//   hotels:{city}:offers  hash  name -> offer json
+//   hotels:{city}:meta    hash  fetchedAt, count, degraded (exists even when the city has no hotels)
 export const cityKeys = (city: string) => {
   const c = normaliseCity(city);
   return {
@@ -34,16 +32,12 @@ export interface CachedCity {
 
 export interface HotelStore {
   saveCity(city: string, hotels: HotelOffer[], options: SaveOptions): Promise<void>;
-  /** Price-range query executed inside Redis. Returns null when the city is not cached. */
+  // null = city not cached
   filterByPrice(city: string, range?: PriceRange): Promise<CachedCity | null>;
   ping(): Promise<boolean>;
 }
 
-/**
- * Atomic read: checks the city is cached, runs ZRANGE … BYSCORE (inclusive
- * bounds) and HMGETs the matching offers, all in one server-side step so a
- * key expiring mid-read cannot return a partial result.
- */
+// Range query + lookup in one script so a key expiring mid-read can't give a partial result.
 const FILTER_SCRIPT = `
 if redis.call('EXISTS', KEYS[3]) == 0 then return false end
 local degraded = redis.call('HGET', KEYS[3], 'degraded') or ''

@@ -1,32 +1,20 @@
-# Triphoria — Hotel Offer Orchestrator
+# Triphoria - Hotel Offer Orchestrator
 
-Aggregates hotel offers from two (mock) suppliers, de-duplicates hotels by name, keeps the **best-priced offer per hotel**, stores the result in **Redis** and filters it by price **inside Redis**. A **Temporal** workflow runs the supplier calls in parallel, with retries.
+Fetches hotel offers from two suppliers in parallel using a Temporal workflow, removes duplicate hotels (keeping the cheaper offer), stores the result in Redis and supports price-range filtering in Redis.
 
-**Stack:** Node.js 22 · TypeScript · Express 5 · Temporal · Redis · Docker Compose
+Stack: Node.js 22, TypeScript, Express, Temporal, Redis, Docker Compose.
 
-- Design docs: [`docs/PRD.md`](docs/PRD.md) (product) and [`docs/TRD.md`](docs/TRD.md) (technical)
-- Postman collection: [`postman/Triphoria.postman_collection.json`](postman/Triphoria.postman_collection.json)
-
----
-
-## Quick start (Docker)
-
-Requires Docker with Compose v2.
+## Running
 
 ```bash
-git clone <this-repo> triphoria && cd triphoria
 docker compose up --build
 ```
 
-| Service | URL |
-|---|---|
-| API | http://localhost:3000 |
-| Temporal Web UI | http://localhost:8233 |
-| Redis | localhost:6379 |
+- API: http://localhost:3000
+- Temporal UI: http://localhost:8233
+- Redis: localhost:6379
 
-**Port already in use?** (`Bind for 0.0.0.0:3000 failed: port is already allocated`) Pick other host ports in a `.env` file next to `docker-compose.yml`, for example `API_PORT=3001`. `REDIS_PORT`, `TEMPORAL_PORT` and `TEMPORAL_UI_PORT` work the same way. Inside the stack the containers still talk on the default ports. In Postman, set `baseUrl` to match (for example `http://localhost:3001`).
-
-Try it:
+If a port is already taken, set a different one in a `.env` file, e.g. `API_PORT=3001` (also `REDIS_PORT`, `TEMPORAL_PORT`, `TEMPORAL_UI_PORT`).
 
 ```bash
 curl "http://localhost:3000/api/hotels?city=delhi"
@@ -34,210 +22,108 @@ curl "http://localhost:3000/api/hotels?city=delhi&minPrice=5000&maxPrice=9500"
 curl "http://localhost:3000/health"
 ```
 
-Every `/api/hotels` call that runs the workflow shows up in the Temporal UI under **Workflows** (`hotel-offers-<city>-<uuid>`). There you can see the two supplier activities running in parallel, plus the `cacheHotels` activity.
+### Without Docker
 
-Stop with `Ctrl+C`, then `docker compose down`.
+Needs Node 22+, Redis 6.2+ and the Temporal CLI.
 
----
+```bash
+npm ci
+cp .env.example .env
+npm run build
+temporal server start-dev
+redis-server
+npm start              # API
+npm run start:worker   # worker
+```
 
-## API
+## Endpoints
 
-### `GET /api/hotels?city=<city>`
+### GET /api/hotels?city=delhi
 
-Runs the Temporal workflow:
-
-1. Calls **Supplier A** and **Supplier B** in parallel.
-2. De-duplicates hotels by name. When both suppliers list a hotel, the **cheaper** offer wins; a hotel listed by only one supplier is kept as is.
-3. Saves the de-duplicated list in Redis.
-4. Returns it, sorted by price.
+Starts `hotelOffersWorkflow`, which calls Supplier A and Supplier B in parallel, de-duplicates hotels by name keeping the cheaper offer, saves the list to Redis and returns it sorted by price.
 
 ```json
 [
-  { "name": "Lemon Tree", "price": 4200,  "supplier": "Supplier A", "commissionPct": 8 },
-  { "name": "Holtin",     "price": 5340,  "supplier": "Supplier B", "commissionPct": 20 },
-  { "name": "Radison",    "price": 5900,  "supplier": "Supplier A", "commissionPct": 13 },
-  { "name": "Taj Palace", "price": 9500,  "supplier": "Supplier B", "commissionPct": 18 },
+  { "name": "Lemon Tree", "price": 4200, "supplier": "Supplier A", "commissionPct": 8 },
+  { "name": "Holtin", "price": 5340, "supplier": "Supplier B", "commissionPct": 20 },
+  { "name": "Radison", "price": 5900, "supplier": "Supplier A", "commissionPct": 13 },
+  { "name": "Taj Palace", "price": 9500, "supplier": "Supplier B", "commissionPct": 18 },
   { "name": "ITC Maurya", "price": 11000, "supplier": "Supplier B", "commissionPct": 14 }
 ]
 ```
 
-### `GET /api/hotels?city=<city>&minPrice=<min>&maxPrice=<max>`
+### GET /api/hotels?city=delhi&minPrice=5000&maxPrice=9500
 
-Filters the stored list **in Redis** (`ZRANGE hotels:<city> <min> <max> BYSCORE`). Bounds are inclusive and either one can be left out. If the city is not cached yet (or the cache has expired), the workflow runs first. The `X-Cache: HIT|MISS` response header shows which happened.
+Filters the stored list in Redis with `ZRANGE ... BYSCORE`. Bounds are inclusive and either one can be omitted. If the city isn't cached yet, the workflow runs first. The `X-Cache` header shows `HIT` or `MISS`.
 
-### `GET /health`
+### GET /health
 
-Reports **Supplier A** and **Supplier B** separately (each is checked over HTTP), plus Redis and Temporal. Returns `200` when everything is up, `503` otherwise.
-
-```json
-{
-  "status": "ok",
-  "suppliers": { "supplierA": { "status": "up", "latencyMs": 3 }, "supplierB": { "status": "up", "latencyMs": 2 } },
-  "dependencies": { "redis": { "status": "up", "latencyMs": 1 }, "temporal": { "status": "up", "latencyMs": 4 } }
-}
-```
+Status of Supplier A, Supplier B, Redis and Temporal. Returns 200 if everything is up, 503 otherwise.
 
 ### Mock suppliers
 
-| Endpoint | Description |
-|---|---|
-| `GET /supplierA/hotels?city=delhi` | Supplier A's hotels (`hotelId`, `name`, `price`, `city`, `commissionPct`) |
-| `GET /supplierB/hotels?city=delhi` | Supplier B's hotels |
-| `POST /supplierA/status` `{"up": false}` | Simulate an outage: the supplier returns `503` until set back to `{"up": true}` |
-| `POST /supplierB/status` `{"up": false}` | Same for Supplier B |
+- `GET /supplierA/hotels?city=delhi`, `GET /supplierB/hotels?city=delhi`
+- `POST /supplierA/status` or `/supplierB/status` with `{"up": false}` makes that supplier return 503 (set `{"up": true}` to restore). They can also start down with `SUPPLIER_A_DOWN=true` / `SUPPLIER_B_DOWN=true`.
 
-You can also start a supplier in the down state with `SUPPLIER_A_DOWN=true` / `SUPPLIER_B_DOWN=true`.
-
-Mock data: **delhi** has overlaps where A wins (Radison), B wins (Holtin) and an equal-price tie (Taj Palace), plus hotels only one supplier lists. **mumbai** overlaps partly. **goa** is Supplier A only. Any other city returns `[]`.
+Mock data covers delhi (overlapping hotels, each supplier winning some), mumbai (partial overlap) and goa (Supplier A only). Any other city returns `[]`.
 
 ### Status codes
 
 | Case | Status |
 |---|---|
-| Success (including `[]`) | `200` |
-| One supplier failed | `200` with the other supplier's hotels and header `X-Degraded-Suppliers: Supplier B` |
-| Missing or invalid `city`, bad `minPrice`/`maxPrice`, `minPrice > maxPrice` | `400` |
-| Both suppliers failed | `502` |
-| Redis or Temporal unavailable, or workflow timeout | `503` |
+| Success, including no results | 200 |
+| One supplier failed | 200, results from the other supplier, header `X-Degraded-Suppliers` |
+| Invalid `city`, `minPrice` or `maxPrice` | 400 |
+| Both suppliers failed | 502 |
+| Redis or Temporal unavailable | 503 |
 
-Every response carries an `X-Request-Id` header, which also appears in the API and worker logs.
+## Design notes
 
----
+- Hotels are matched by name, ignoring case and extra spaces.
+- On equal prices, the offer with the higher commission wins; if that's also equal, Supplier A.
+- City is case-insensitive.
+- If one supplier fails after retries, the other supplier's results are returned and the failure is flagged in a header so the response body stays a plain array.
+- A request without a price filter always runs the workflow and refreshes the cache (TTL 300s). Filtered requests use the cache. Partial results are cached for 30s only.
 
-## Design decisions and assumptions
+**Temporal:** supplier activities have a 5s timeout and up to 3 attempts with backoff. 5xx, network errors and timeouts are retried; 4xx and invalid payloads are not. The workflow logic lives in `src/temporal/orchestrate.ts` and the merge in `src/domain/merge.ts`, both pure functions so they're deterministic and easy to test.
 
-The brief leaves these open. They are also listed in [`docs/PRD.md`](docs/PRD.md#5-business-rules-and-assumptions).
-
-- **Dedupe key:** hotel name, trimmed and case-insensitive (`"Holtin"` = `" HOLTIN "`). No fuzzy matching.
-- **Equal prices:** the higher `commissionPct` wins; if that is also equal, Supplier A wins. The result is the same on every run.
-- **City:** case-insensitive and trimmed.
-- **Partial failure:** if one supplier fails after its retries, the API returns the other supplier's hotels and flags it in `X-Degraded-Suppliers`. The body stays a plain array, as the brief specifies.
-- **Caching:** an unfiltered request always runs the workflow and refreshes Redis (TTL 300 s). A filtered request reads Redis and only runs the workflow on a cache miss. Partial results are cached for 30 s only, so a recovered supplier shows up quickly.
-
-### Temporal
-
-- Workflow `hotelOffersWorkflow` on task queue `hotel-offers`.
-- `fetchSupplierHotels` activity: 5 s start-to-close timeout, 3 attempts with exponential backoff. 5xx, network errors and timeouts are retried. 4xx responses and malformed payloads fail at once (non-retryable).
-- `cacheHotels` activity: up to 5 attempts.
-- The orchestration logic (`src/temporal/orchestrate.ts`) and the merge (`src/domain/merge.ts`) are pure functions, so they are deterministic inside the workflow sandbox and easy to unit-test.
-
-### Redis layout (per city, all keys expire together)
+**Redis**, per city (all keys share a TTL):
 
 | Key | Type | Content |
 |---|---|---|
-| `hotels:<city>` | Sorted set | member = hotel name, score = price |
-| `hotels:<city>:offers` | Hash | hotel name → offer JSON |
-| `hotels:<city>:meta` | Hash | `fetchedAt`, `count`, `degraded`: marks the city as cached, even when it has no hotels |
+| `hotels:<city>` | sorted set | hotel name, score = price |
+| `hotels:<city>:offers` | hash | hotel name -> offer JSON |
+| `hotels:<city>:meta` | hash | fetch time, count, degraded suppliers |
 
-Writes are atomic (`MULTI`/`EXEC`). The filter is one Lua script that checks the city is cached, runs `ZRANGE … BYSCORE`, then `HMGET`s the offers, so a key expiring mid-read cannot return a partial result.
-
-Inspect it yourself:
+Writes use `MULTI`/`EXEC`. The filter is a Lua script (range query + hash lookup) so it's atomic.
 
 ```bash
 docker compose exec redis redis-cli ZRANGE hotels:delhi 5000 9500 BYSCORE WITHSCORES
 ```
 
----
-
 ## Postman
 
-Import `postman/Triphoria.postman_collection.json` and run it in order (Collection Runner). The `baseUrl` variable defaults to `http://localhost:3000`. It has 28 requests and 70 assertions in six folders:
+Import `postman/Triphoria.postman_collection.json` and run the folders in order. `baseUrl` defaults to `http://localhost:3000`. It covers health, raw supplier responses, de-duplication, the no-results case, price filters, validation errors and the supplier outage scenario.
 
-0. **Setup:** checks `baseUrl` reaches this API, then resets both suppliers to up
-1. **Health:** all components up
-2. **Mock suppliers:** raw A and B responses; checks the names overlap
-3. **Best offers:** delhi dedupe and winners, case-insensitive city, no-results city, 400s
-4. **Price filter (Redis):** range, min only, max only (inclusive), no matches, cache miss, 400s
-5. **Supplier outage:** B down → partial results and `/health` 503 → both down → 502 → recover
-
-From the command line, with the stack running:
+Or from the command line:
 
 ```bash
-npm run test:postman        # npx newman run postman/Triphoria.postman_collection.json
+npm run test:postman
+# different port:
+npx newman run postman/Triphoria.postman_collection.json --env-var baseUrl=http://localhost:3001
 ```
-
----
-
-## Running without Docker
-
-Requires Node.js 22+, Redis 6.2+ and a Temporal server ([Temporal CLI](https://docs.temporal.io/cli): `temporal server start-dev`).
-
-```bash
-npm ci
-cp .env.example .env          # defaults point at localhost
-npm run build
-
-temporal server start-dev     # terminal 1 (UI on http://localhost:8233)
-redis-server                  # terminal 2
-npm start                     # terminal 3 — API on :3000
-npm run start:worker          # terminal 4 — Temporal worker
-```
-
-For development with reload, use `npm run dev` and `npm run dev:worker`.
 
 ## Tests
 
 ```bash
-npm test             # all tests (unit + integration). Integration tests need Redis on localhost:6379
-npm run test:unit    # unit tests only, no external services
-npm run typecheck
+npm test            # unit + integration (integration needs Redis on localhost:6379)
+npm run test:unit
 ```
-
-| Suite | Covers |
-|---|---|
-| `test/unit/merge.test.ts` | Best-offer selection, tie-breaks, name normalisation, mock-data overlaps |
-| `test/unit/orchestrate.test.ts` | Parallel fan-out, partial failure, all-failed, cache errors |
-| `test/unit/activities.test.ts` | Supplier HTTP mapping, retryable vs non-retryable failures, timeouts, cache TTLs (Temporal `MockActivityEnvironment`) |
-| `test/unit/workflow-bundle.test.ts` | The workflow bundles for Temporal's deterministic sandbox |
-| `test/unit/suppliers.test.ts` | Mock supplier endpoints and outage switch |
-| `test/integration/hotelStore.test.ts` | Redis storage, inclusive/open ranges, empty city, atomic refresh, TTL (real Redis) |
-| `test/integration/api.test.ts` | HTTP contract, validation, status codes, headers, `/health` (real Redis) |
-
-`npm run harness` starts the app on :3100 with the real activities, orchestration logic and Redis, but calls them directly instead of through Temporal. It is useful for running the Postman collection when no Temporal server is available:
-
-```bash
-npm run harness &
-npx -y newman@6 run postman/Triphoria.postman_collection.json --env-var baseUrl=http://localhost:3100
-```
-
----
 
 ## Configuration
 
-| Variable | Default | Notes |
-|---|---|---|
-| `PORT` | `3000` | API port |
-| `REDIS_URL` | `redis://localhost:6379` | |
-| `TEMPORAL_ADDRESS` | `localhost:7233` | |
-| `TEMPORAL_NAMESPACE` | `default` | |
-| `TEMPORAL_TASK_QUEUE` | `hotel-offers` | |
-| `SUPPLIER_BASE_URL` | `http://localhost:3000` | Where the worker reaches the mock suppliers |
-| `SUPPLIER_TIMEOUT_MS` | `3000` | Per supplier HTTP call |
-| `CACHE_TTL_SECONDS` | `300` | |
-| `DEGRADED_TTL_SECONDS` | `30` | TTL for partial results |
-| `WORKFLOW_TIMEOUT_MS` | `15000` | How long the API waits for the workflow |
-| `SUPPLIER_A_DOWN` / `SUPPLIER_B_DOWN` | `false` | Start a mock supplier in the down state |
-| `LOG_LEVEL` | `info` | |
-| `TEMPORAL_CLI_VERSION` | `latest` | Compose only: tag of the `temporalio/temporal` image |
+See `.env.example`. Main variables: `PORT`, `REDIS_URL`, `TEMPORAL_ADDRESS`, `SUPPLIER_BASE_URL`, `CACHE_TTL_SECONDS`, `WORKFLOW_TIMEOUT_MS`, `LOG_LEVEL`.
 
 ## Deployment
 
-`docker compose up --build -d` runs the whole stack on any Docker host. The API and worker are built from one image (`Dockerfile`, multi-stage, non-root). The API runs `node dist/server.js` and the worker runs `node dist/worker.js`, so they can be deployed and scaled separately. Point them at managed Redis and Temporal (for example Temporal Cloud) with `REDIS_URL` and `TEMPORAL_ADDRESS`.
-
-The Compose file runs Temporal's single-binary **dev server** (`temporalio/temporal server start-dev`). Workflow history is held in memory and lost on restart, which is fine for this assessment. For production, run the Temporal server with a persistent database or use Temporal Cloud.
-
-## Project structure
-
-```
-src/
-  server.ts, worker.ts      entry points
-  app.ts                    Express app (routes + error handling)
-  api/                      /api/hotels, /health, errors, request context
-  domain/merge.ts           best-offer merge (pure)
-  temporal/                 workflow, activities, orchestration core, client, retry policy
-  redis/                    client + hotel store (sorted set, hash, Lua filter)
-  suppliers/                mock supplier data + routes
-test/                       unit, integration, local harness
-postman/                    Postman collection
-docs/                       PRD + TRD
-```
+`docker compose up --build -d` runs everything on any Docker host. The API and worker use the same image (`node dist/server.js` and `node dist/worker.js`), so they can be scaled separately. For production, point `TEMPORAL_ADDRESS` at a Temporal cluster with persistence or Temporal Cloud; the compose setup uses the Temporal dev server, which keeps history in memory.

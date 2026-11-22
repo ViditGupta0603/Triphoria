@@ -12,10 +12,7 @@ import type { HotelOffersRunner } from '../../src/temporal/client';
 import { ALL_SUPPLIERS_FAILED } from '../../src/temporal/constants';
 import { supplierLabel, type HotelOffer, type SupplierId } from '../../src/types';
 
-/**
- * API tests with a real Redis and an in-process stand-in for the Temporal
- * workflow that does the same work (reads mock suppliers, merges, caches).
- */
+// real Redis, with a fake runner standing in for the Temporal workflow
 const url = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/14';
 
 let redis: Redis;

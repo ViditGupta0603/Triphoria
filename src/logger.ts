@@ -9,7 +9,6 @@ export const logger = pino({
   base: { service },
   timestamp: pino.stdTimeFunctions.isoTime,
   redact: ['req.headers.authorization'],
-  // Pretty output only for local development, JSON everywhere else.
   ...(config.NODE_ENV === 'development' && process.stdout.isTTY
     ? { transport: { target: 'pino-pretty', options: { colorize: true } } }
     : {}),

@@ -2,11 +2,7 @@ import path from 'node:path';
 import { bundleWorkflowCode } from '@temporalio/worker';
 import { describe, expect, it } from 'vitest';
 
-/**
- * Bundles the workflow the same way the worker does. This fails if the
- * workflow (or anything it imports) uses Node APIs or other modules that are
- * not allowed in Temporal's deterministic sandbox.
- */
+// fails if the workflow imports something not allowed in the sandbox
 describe('workflow bundle', () => {
   it('bundles for the Temporal sandbox and exports hotelOffersWorkflow', async () => {
     const { code } = await bundleWorkflowCode({

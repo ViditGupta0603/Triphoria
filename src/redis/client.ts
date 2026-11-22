@@ -4,7 +4,6 @@ import { logger } from '../logger';
 
 export const createRedis = (url: string = config.REDIS_URL): Redis => {
   const redis = new Redis(url, {
-    // Fail commands quickly instead of queueing forever when Redis is down.
     maxRetriesPerRequest: 2,
     enableOfflineQueue: true,
     retryStrategy: (times) => Math.min(times * 200, 2_000),

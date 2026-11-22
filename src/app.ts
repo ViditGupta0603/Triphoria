@@ -33,8 +33,7 @@ export const createApp = (deps: AppDeps): Express => {
     });
   });
 
-  // Liveness probe for container orchestration: the process is up and serving.
-  // (/health reports dependency and supplier health and may return 503.)
+  // used by the docker healthcheck (/health returns 503 when a supplier is down)
   app.get('/livez', (_req, res) => {
     res.json({ status: 'alive' });
   });

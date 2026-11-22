@@ -8,7 +8,6 @@ import { connectWithRetry } from './connection';
 
 let clientPromise: Promise<{ client: Client; connection: Connection }> | undefined;
 
-/** Lazily connects once and reuses the client. Resets on failure so the next call retries. */
 const getTemporal = () => {
   clientPromise ??= connectWithRetry('Temporal', () =>
     Connection.connect({ address: config.TEMPORAL_ADDRESS }),
@@ -30,7 +29,6 @@ export interface HotelOffersRunner {
   run(city: string, requestId?: string): Promise<HotelOffersWorkflowResult>;
 }
 
-/** Starts the workflow and waits for its result. */
 export const temporalRunner: HotelOffersRunner = {
   async run(city, requestId) {
     const client = await getTemporalClient();
@@ -47,7 +45,6 @@ export const temporalRunner: HotelOffersRunner = {
   },
 };
 
-/** Health probe used by /health. */
 export const checkTemporal = async (): Promise<void> => {
   const { connection } = await getTemporal();
   await connection.healthService.check({});

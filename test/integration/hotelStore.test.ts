@@ -3,10 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { cityKeys, createHotelStore, type HotelStore } from '../../src/redis/hotelStore';
 import type { HotelOffer } from '../../src/types';
 
-/**
- * Runs against a real Redis (>= 6.2 for ZRANGE … BYSCORE).
- * Uses REDIS_URL, defaulting to a local instance, DB 15 to stay out of the way.
- */
+// needs a real Redis >= 6.2; uses db 15
 const url = process.env.TEST_REDIS_URL ?? 'redis://localhost:6379/15';
 
 const delhi: HotelOffer[] = [
